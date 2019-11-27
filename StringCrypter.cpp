@@ -210,18 +210,66 @@ int base64_encode_blockend(char* code_out, base64_encodestate* state_in) {
 	*codechar++ = '\n';
 	return codechar - code_out;
 }
-void base64EncodeString(const char *textToEncode, char *buffer);
-void base64DecodeString(const char *codeToDecode, char *buffer);
-void base64EncodeFile(FILE *fileToEncode, FILE *encodedFile);
-void base64DecodeFile(FILE *encodedFile, FILE *decodedFile);
-string Time();
-void print(string msg);
-void printusage();
-bool cmp(int x,int y);
-string version="1.2.0",temp;
-char crypt[10][10],
-	 headcrypt[10][10]={{7,9,10,11,13,32,33,34,35,36},{37,38,39,40,41,42,43,44,45,46},{47,48,49,50,51,52,53,54,55,56},{57,58,59,60,61,62,63,64,65,66},{67,68,69,70,71,72,73,74,75,76},{77,78,79,80,81,82,83,84,85,86},{87,88,89,90,91,92,93,94,95,96},{97,98,99,100,101,102,103,104,105,106},{107,108,109,110,111,112,113,114,115,116},{117,118,119,120,121,122,123,124,125,126}},
-	 uncrypted[100]={7,9,10,11,13,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126};
+void base64EncodeString(const char *textToEncode, char *buffer) {
+    base64_encodestate state;
+    base64_init_encodestate(&state);
+    int numberOfBytesEncoded = base64_encode_block(textToEncode, strlen(textToEncode), buffer, &state);
+    numberOfBytesEncoded += base64_encode_blockend(buffer + numberOfBytesEncoded, &state);
+    buffer[numberOfBytesEncoded] = '\0';
+}
+void base64DecodeString(const char *codeToDecode, char *buffer) {
+    base64_decodestate state;
+    base64_init_decodestate(&state);
+    int numberOfCharactersDecoded = base64_decode_block(codeToDecode, strlen(codeToDecode), buffer, &state);
+    buffer[numberOfCharactersDecoded] = '\0';
+}
+void base64EncodeFile(FILE *fileToEncode, FILE *encodedFile) {
+    char readBuffer[1024];
+    char encodedBuffer[2048];
+    int numberOfBytesEncoded;
+    base64_encodestate state;
+    base64_init_encodestate(&state);
+    while (!feof(fileToEncode)) {
+        size_t numberOfObjects = fread(readBuffer, sizeof(char), 1024, fileToEncode);
+        numberOfBytesEncoded = base64_encode_block(readBuffer, numberOfObjects, encodedBuffer, &state);
+        fwrite(encodedBuffer, sizeof(char), numberOfBytesEncoded, encodedFile);
+    }
+    numberOfBytesEncoded = base64_encode_blockend(encodedBuffer, &state);
+    fwrite(encodedBuffer, sizeof(char), numberOfBytesEncoded, encodedFile);
+}
+void base64DecodeFile(FILE *encodedFile, FILE *decodedFile) {
+    char inputBuffer[1024];
+    char decodedBuffer[2048];
+    int numberOfBytesDecoded;
+    base64_decodestate state;
+    base64_init_decodestate(&state);
+    while (!feof(encodedFile)) {
+        size_t numberOfCharacters = fread(inputBuffer, sizeof(char), 1024, encodedFile);
+        numberOfBytesDecoded = base64_decode_block(inputBuffer, numberOfCharacters, decodedBuffer, &state);
+        fwrite(decodedBuffer, sizeof(char), numberOfBytesDecoded, decodedFile);
+    }
+}
+string Time() {
+	time_t t=time(NULL);
+	char c[64]={0};
+	strftime(c,sizeof(c)-1,"%H:%M:%S",localtime(&t));
+	return c;
+}
+void print(string msg) {
+	cerr<<"["+Time()+"] "+msg+"\n";
+}
+void printusage() {
+	print("Usage:");
+	print("Encrypt: StringCrypter encrypt <file> <out> [headmessage] [password]");
+	print("Decrypt: StringCrypter decrypt <file> <out> [password]");
+}
+bool cmp(int x,int y) {
+	return x>y;
+}
+string version="1.3.0",temp;
+char crypt[9][9],
+	 headcrypt[9][9]={{7,7,7,7,7,7,7,7,7},{7,7,7,7,7,10,13,'+','/'},{'0','1','2','3','4','5','6','7','8'},{'9','=','A','B','C','D','E','F','G'},{'H','I','J','K','L','M','N','O','P'},{'Q','R','S','T','U','V','W','X','Y'},{'Z','a','b','c','d','e','f','g','h'},{'i','j','k','l','m','n','o','p','q'},{'r','s','t','u','v','w','x','y','z'}},
+	 uncrypted[81]={7,7,7,7,7,7,7,7,7,7,7,7,7,7,10,13,'+','/','0','1','2','3','4','5','6','7','8','9','=','A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'};
 int main(int argc,char *argv[]) {
 	print("MeowCat String Crypter v"+version);
 	if (argc<4) {
@@ -233,33 +281,35 @@ int main(int argc,char *argv[]) {
 	if (temp=="encrypt") {
 		if (argc>=6) {
 			temp=argv[5];
-			for (register int i=0;i<=temp.length();i++) {
+			for (int i=0;i<=temp.length();i++) {
 				password+=int(temp[i]);
-				password%=198;
+				password%=160;
 			}
 		}
 	} else if (temp=="decrypt") {
 		if (argc>=5) {
 			temp=argv[4];
-			for (register int i=0;i<=temp.length();i++) {
+			for (int i=0;i<=temp.length();i++) {
 				password+=int(temp[i]);
-				password%=198;
+				password%=160;
 			}
 		}
 	}
-	if (password<=99) {
-		sort(&uncrypted[0],&uncrypted[99],cmp);
+	if (password<=80) {
+		sort(&uncrypted[0],&uncrypted[80],cmp);
+	} else {
+		password-=80;
 	}
-	for (register int i=1;i<=password;i++) {
+	for (int i=1;i<=password;i++) {
 		tmp=int(uncrypted[0]);
-		for (register int j=0;j<100;j++) {
-			uncrypted[i]=uncrypted[i+1];
+		for (int j=0;j<80;j++) {
+			uncrypted[j]=uncrypted[j+1];
 		}
-		uncrypted[99]=char(tmp);
+		uncrypted[80]=char(tmp);
 	}
 	tmp=0;
-	for (register int i=0;i<10;i++) {
-		for (register int j=0;j<10;j++) {
+	for (int i=0;i<9;i++) {
+		for (int j=0;j<9;j++) {
 			crypt[i][j]=uncrypted[tmp];
 			tmp++;
 		}
@@ -288,13 +338,13 @@ int main(int argc,char *argv[]) {
 	        	print("Cannot write file.");
 	    		print("Encode failed.");
 	    		print("Encrypt failed.");
-	    		return 0;
+	    		return 1;
 	        }
 	    } else {
 	    	print("Cannot open file.");
 	    	print("Encode failed.");
 	    	print("Encrypt failed.");
-	    	return 0;
+	    	return 1;
 	    }
 	    fclose(inputFile);
 	    fclose(encodedFile);
@@ -310,24 +360,24 @@ int main(int argc,char *argv[]) {
 		print("Encrypting...");
 		cout<<":MCS:DEC:";
 		if (c!="") {
-			for (register int i=0;i<=c.length();i++) {
+			for (int i=0;i<=c.length();i++) {
 				if (d) {
 					d=false;
 				}
-				for (register int j=0;j<10;j++) {
-					for (register int k=0;k<10;k++) {
+				for (int j=0;j<9;j++) {
+					for (int k=0;k<9;k++) {
 						if (c[i]==headcrypt[j][k]) {
 							cout<<"\n:H:";
 							b="";
-							for (register int l=1;l<=j+1;l++) {
+							for (int l=1;l<=j+1;l++) {
 								b+="|";
 							}
-							cout<<setw(10)<<b;
+							cout<<setw(9)<<b;
 							b="";
-							for (register int l=1;l<=k+1;l++) {
+							for (int l=1;l<=k+1;l++) {
 								b+="|";
 							}
-							cout<<setw(10)<<b;
+							cout<<setw(9)<<b;
 							d=true;
 							break;
 						}
@@ -343,20 +393,20 @@ int main(int argc,char *argv[]) {
 			if (a==EOF) {
 				break;
 			} else {
-				for (register int j=0;j<10;j++) {
-					for (register int k=0;k<10;k++) {
+				for (int j=0;j<9;j++) {
+					for (int k=0;k<9;k++) {
 						if (char(a)==crypt[j][k]) {
 							cout<<"\n:E:";
 							b="";
-							for (register int l=1;l<=j+1;l++) {
+							for (int l=1;l<=j+1;l++) {
 								b+="|";
 							}
-							cout<<setw(10)<<b;
+							cout<<setw(9)<<b;
 							b="";
-							for (register int l=1;l<=k+1;l++) {
+							for (int l=1;l<=k+1;l++) {
 								b+="|";
 							}
-							cout<<setw(10)<<b;
+							cout<<setw(9)<<b;
 							d=true;
 							break;
 						}
@@ -400,7 +450,7 @@ int main(int argc,char *argv[]) {
 			print("Cannot open file.");
 			print("Decrypt Failed.");
 			fclose(stdout);
-			return 0;
+			return 1;
 		}
 		while (!g.eof()) {
 			getline(g,a);
@@ -413,25 +463,25 @@ int main(int argc,char *argv[]) {
 					print("File is not a stanard MeowCat Studio Decrypt file.");
 					print("Decrypt Failed.");
 					fclose(stdout);
-					return 0;
+					return 1;
 				} else {
 					f=false;
 					print("Decrypting...");
 				}
 			} else {
 				b="";
-				for (register int i=0;i<3;i++) {
+				for (int i=0;i<3;i++) {
 					b+=a[i];
 				}
 				if (b==":E:") {
 					c=0;
-					for (register int i=3;i<13;i++) {
+					for (int i=3;i<12;i++) {
 						if (a[i]=='|') {
 							c++;
 						}
 					}
 					d=0;
-					for (register int i=13;i<23;i++) {
+					for (int i=12;i<21;i++) {
 						if (a[i]=='|') {
 							d++;
 						}
@@ -441,13 +491,13 @@ int main(int argc,char *argv[]) {
 					cout<<char(a[3]);
 				} else if (b==":H:") {
 					c=0;
-					for (register int i=3;i<13;i++) {
+					for (int i=3;i<12;i++) {
 						if (a[i]=='|') {
 							c++;
 						}
 					}
 					d=0;
-					for (register int i=13;i<23;i++) {
+					for (int i=12;i<21;i++) {
 						if (a[i]=='|') {
 							d++;
 						}
@@ -467,13 +517,13 @@ int main(int argc,char *argv[]) {
 	        	print("Cannot write file.");
 	        	print("Decode failed.");
 	    		print("Decrypt failed.");
-	    		return 0;
+	    		return 1;
 	        }
 	    } else {
 	    	print("Cannot open file.");
 	        print("Decode failed.");
 	    	print("Decrypt failed.");
-	    	return 0;
+	    	return 1;
 	    }
 	    print("Removing temporary file...");
 	    ofstream outfile;
@@ -486,64 +536,7 @@ int main(int argc,char *argv[]) {
 		return 0;
 	} else {
 		printusage();
-		return 0;
+		return 1;
 	}
 	return 0;
-}
-string Time() {
-	time_t t=time(NULL);
-	char c[64]={0};
-	strftime(c,sizeof(c)-1,"%H:%M:%S",localtime(&t));
-	return c;
-}
-void print(string msg) {
-	cerr<<"["+Time()+"] "+msg+"\n";
-}
-void printusage() {
-	print("Usage:");
-	print("Encrypt: StringCrypter encrypt <file> <out> [head] [password]");
-	print("Decrypt: StringCrypter decrypt <file> <out> [password]");
-	print("This program is NOT REAL encrypt,just for fun.");
-}
-bool cmp(int x,int y) {
-	return x>y;
-}
-void base64EncodeString(const char *textToEncode, char *buffer) {
-    base64_encodestate state;
-    base64_init_encodestate(&state);
-    int numberOfBytesEncoded = base64_encode_block(textToEncode, strlen(textToEncode), buffer, &state);
-    numberOfBytesEncoded += base64_encode_blockend(buffer + numberOfBytesEncoded, &state);
-    buffer[numberOfBytesEncoded] = '\0';
-}
-void base64DecodeString(const char *codeToDecode, char *buffer) {
-    base64_decodestate state;
-    base64_init_decodestate(&state);
-    int numberOfCharactersDecoded = base64_decode_block(codeToDecode, strlen(codeToDecode), buffer, &state);
-    buffer[numberOfCharactersDecoded] = '\0';
-}
-void base64EncodeFile(FILE *fileToEncode, FILE *encodedFile) {
-    char readBuffer[1024];
-    char encodedBuffer[2048];
-    int numberOfBytesEncoded;
-    base64_encodestate state;
-    base64_init_encodestate(&state);
-    while (!feof(fileToEncode)) {
-        size_t numberOfObjects = fread(readBuffer, sizeof(char), 1024, fileToEncode);
-        numberOfBytesEncoded = base64_encode_block(readBuffer, numberOfObjects, encodedBuffer, &state);
-        fwrite(encodedBuffer, sizeof(char), numberOfBytesEncoded, encodedFile);
-    }
-    numberOfBytesEncoded = base64_encode_blockend(encodedBuffer, &state);
-    fwrite(encodedBuffer, sizeof(char), numberOfBytesEncoded, encodedFile);
-}
-void base64DecodeFile(FILE *encodedFile, FILE *decodedFile) {
-    char inputBuffer[1024];
-    char decodedBuffer[2048];
-    int numberOfBytesDecoded;
-    base64_decodestate state;
-    base64_init_decodestate(&state);
-    while (!feof(encodedFile)) {
-        size_t numberOfCharacters = fread(inputBuffer, sizeof(char), 1024, encodedFile);
-        numberOfBytesDecoded = base64_decode_block(inputBuffer, numberOfCharacters, decodedBuffer, &state);
-        fwrite(decodedBuffer, sizeof(char), numberOfBytesDecoded, decodedFile);
-    }
 }
